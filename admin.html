@@ -830,7 +830,7 @@ function renderCoachWidget(meetId) {
     const n = counts[coach];
     const lastName = coach.split(' ')[1];
     html += `<div class="coach-card ${n > 0 ? 'has-athletes' : ''} ${n > 0 ? 'coach-card-clickable' : ''}"
-      onclick="${n > 0 ? `openCoachModal('${coach.replace(/'/g,"\\'")}', ${meetId})` : ''}"
+      onclick="${n > 0 ? `openCoachModal('${coach.replace(/'/g,"\\'")}', '${meetId}')` : ''}"
       title="${n > 0 ? `Click to see ${coach}'s available athletes` : 'No athletes available this meet'}">
       <div class="coach-name">${lastName}</div>
       <div class="coach-count ${n > 0 ? 'has-athletes' : ''}">${n}</div>
@@ -841,10 +841,11 @@ function renderCoachWidget(meetId) {
 }
 
 function openCoachModal(coach, meetId) {
+  meetId = parseInt(meetId);
   const meet = MEETS.find(m => m.id === meetId);
   const athletes = volunteers.filter(vol => {
     if (vol.coach !== coach) return false;
-    return vol.avail && vol.avail[meetId] && vol.avail[meetId].length > 0;
+    return vol.avail && (vol.avail[meetId] || vol.avail[String(meetId)]);
   });
 
   document.getElementById('coach-modal-title').textContent = coach;
@@ -943,7 +944,7 @@ function renderCoverage() {
         <td style="font-size:12px;color:var(--text-mid);text-align:center;">${role.slots}</td>
         <td style="font-size:13px;color:var(--text-muted);">${count} available</td>
         <td style="font-size:13px;${assignedCellStyle}padding:10px 14px;">${assignedDisplay}</td>
-        <td><button class="assign-btn" onclick="openModal('${meetId}',${role.id})">View &amp; assign</button></td>
+        <td><button class="assign-btn" onclick="openModal('${meetId}','${role.id}')">View &amp; assign</button></td>
       </tr>`;
     });
   });
@@ -985,14 +986,14 @@ function renderModalBody() {
     if (isAssigned) {
       btnHtml = `<span style="display:inline-flex;align-items:center;gap:4px;">
         <button class="modal-assign-btn assigned" disabled>✓ Assigned</button>
-        <span class="unassign-link" onclick="unassignVol(${meetId},${roleId},${vol.id})">Remove</span>
+        <span class="unassign-link" onclick="unassignVol('${meetId}','${roleId}','${vol.id}')">Remove</span>
       </span>`;
     } else if (conflict) {
       btnHtml = `<button class="modal-assign-btn" disabled title="Already assigned to: ${conflict.name}" style="cursor:not-allowed;">Assign</button>`;
     } else if (slotsFull) {
       btnHtml = `<button class="modal-assign-btn" disabled title="All slots for this role are filled" style="cursor:not-allowed;">Role full</button>`;
     } else {
-      btnHtml = `<button class="modal-assign-btn" onclick="assignVol(${meetId},${roleId},${vol.id})">Assign</button>`;
+      btnHtml = `<button class="modal-assign-btn" onclick="assignVol('${meetId}','${roleId}','${vol.id}')">Assign</button>`;
     }
     html += `<div class="avail-name-row ${conflict?'conflict':''}" ${conflict?`title="Already assigned to: ${conflict.name}"`:''}">
       <div>
@@ -1005,15 +1006,20 @@ function renderModalBody() {
   document.getElementById('modal-body').innerHTML = html;
 }
 function assignVol(meetId, roleId, volId) {
-  if (!assignments[meetId]) assignments[meetId] = {};
-  if (!assignments[meetId][roleId]) assignments[meetId][roleId] = [];
-  if (!assignments[meetId][roleId].includes(volId)) { assignments[meetId][roleId].push(volId); saveToSheet({action:'saveAssignment',meetId,roleId,volId,unassign:false}); }
+  const mid = parseInt(meetId), rid = parseInt(roleId);
+  if (!assignments[mid]) assignments[mid] = {};
+  if (!assignments[mid][rid]) assignments[mid][rid] = [];
+  if (!assignments[mid][rid].includes(volId)) {
+    assignments[mid][rid].push(volId);
+    saveToSheet({action:'saveAssignment', meetId: mid, roleId: rid, volId, unassign: false});
+  }
   recalcSUs(); renderModalBody(); renderCoverage(); renderPerks();
 }
 function unassignVol(meetId, roleId, volId) {
-  if (assignments[meetId] && assignments[meetId][roleId]) {
-    assignments[meetId][roleId] = assignments[meetId][roleId].filter(id => id !== volId);
-    saveToSheet({action:'saveAssignment',meetId,roleId,volId,unassign:true});
+  const mid = parseInt(meetId), rid = parseInt(roleId);
+  if (assignments[mid] && assignments[mid][rid]) {
+    assignments[mid][rid] = assignments[mid][rid].filter(id => id !== volId);
+    saveToSheet({action:'saveAssignment', meetId: mid, roleId: rid, volId, unassign: true});
   }
   recalcSUs(); renderModalBody(); renderCoverage(); renderPerks();
 }
@@ -1268,13 +1274,13 @@ function renderPerks() {
     html += `<tr>
       <td style="font-weight:500;">${vol.name}</td>
       <td><span class="su-badge">${vol.sus}</span></td>
-      <td style="text-align:center;"><input type="checkbox" ${vol.merchs?'checked':''} onchange="setMerch(${vol.id},this.checked)"></td>`;
+      <td style="text-align:center;"><input type="checkbox" ${vol.merchs?'checked':''} onchange="setMerch('${vol.id}',this.checked)"></td>`;
     MEETS.forEach(m => {
       const allAssigned = assignments[m.id] ? Object.values(assignments[m.id]).flat() : [];
       const worked = allAssigned.includes(vol.id);
       const inRaffle = raffleData[m.id] && raffleData[m.id][vol.id];
       html += `<td style="text-align:center;">${worked
-        ? `<input type="checkbox" ${inRaffle?'checked':''} onchange="setRaffle(${m.id},${vol.id},this.checked)" title="Raffle entry for ${vol.name}">`
+        ? `<input type="checkbox" ${inRaffle?'checked':''} onchange="setRaffle('${m.id}','${vol.id}',this.checked)" title="Raffle entry for ${vol.name}">`
         : '<span style="color:var(--border);">—</span>'}</td>`;
     });
     html += '</tr>';
@@ -1285,11 +1291,11 @@ function renderPerks() {
 function setRaffle(meetId, volId, val) {
   if (!raffleData[meetId]) raffleData[meetId] = {};
   raffleData[meetId][volId] = val;
-  saveToSheet({action:'saveRaffle',meetId,volId,entered:val});
+  saveToSheet({action:'saveRaffle', meetId, volId, entered: val});
 }
 function setMerch(volId, val) {
-  const vol = volunteers.find(v => v.id === volId);
-  if (vol) { vol.merchs = val; saveToSheet({action:'saveMerch',volId,issued:val}); }
+  const vol = volunteers.find(v => String(v.id) === String(volId));
+  if (vol) { vol.merchs = val; saveToSheet({action:'saveMerch', volId, issued: val}); }
 }
 
 // ══════════════════════════════════════════════════════
