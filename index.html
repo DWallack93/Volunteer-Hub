@@ -631,7 +631,7 @@ const CATS = ["Administrative","Track","Field"];
 // ══════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════
-const VOLUNTEER_HIDDEN_ROLES = new Set();
+const VOLUNTEER_HIDDEN_ROLES = new Set([1, 7]); // Meet Director, Volunteer Coordinator — pre-assigned, not shown on form
 
 // ══════════════════════════════════════════════════════
 // VOLUNTEER FORM
@@ -743,12 +743,24 @@ async function submitForm() {
   };
 
   try {
-    const res = await fetch(SCRIPT_URL, {method:'POST', body: JSON.stringify(payload)});
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    const editLink = `${payload.siteUrl}?edit=${data.token}`;
+    // POST with no-cors — Apps Script doesn't support CORS headers on responses.
+    // We send the data and then poll via JSONP to get the result.
+    const payload_str = JSON.stringify(payload);
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: payload_str,
+    });
+    // Since no-cors gives us an opaque response, we can't read it directly.
+    // Instead, show success and generate the edit link from the known pattern.
+    // The token is echoed back via the edit-link approach below.
+    // For a new submission we poll for the token via JSONP.
+    const token = await jsonpGet(SCRIPT_URL, {action: 'getTokenByEmail', email});
+    const editLink = token
+      ? `${payload.siteUrl}?edit=${token}`
+      : payload.siteUrl;
     document.getElementById('success-name').textContent = name.split(' ')[0];
-    document.getElementById('success-update-msg').textContent = data.isUpdate
+    document.getElementById('success-update-msg').textContent = window._editToken
       ? `We found an existing record for ${email} and updated it with your new availability.`
       : `Your availability has been recorded for the 2026 All-Comers season.`;
     document.getElementById('edit-link-display').textContent = editLink;
@@ -762,13 +774,31 @@ async function submitForm() {
   }
 }
 
+// JSONP helper — used for GET requests to bypass CORS
+function jsonpGet(url, params) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'cb_' + Math.random().toString(36).slice(2);
+    const qs = Object.entries({...params, callback: cbName})
+      .map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    const script = document.createElement('script');
+    window[cbName] = (data) => {
+      delete window[cbName];
+      document.head.removeChild(script);
+      if (data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+    script.src = `${url}?${qs}`;
+    script.onerror = () => { delete window[cbName]; reject(new Error('JSONP failed')); };
+    document.head.appendChild(script);
+  });
+}
+
 async function checkEditToken() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('edit');
   if (!token) return;
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=getVolunteer&token=${token}`);
-    const data = await res.json();
+    const data = await jsonpGet(SCRIPT_URL, {action: 'getVolunteer', token});
     if (data.error) return;
     document.getElementById('vol-name').value  = data.name  || '';
     document.getElementById('vol-email').value = data.email || '';
@@ -807,7 +837,7 @@ function resetForm() {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwgfWcgj8tvI1BlqvYoC15-bqsiqS9LpazMwn5dt0vkN297U7J94h1Ul-rjCPECTZef/exec'; // Replace with your deployed Apps Script URL (see SETUP.md Step 4)
+const SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL'; // Replace with your deployed Apps Script URL (see SETUP.md Step 4)
 buildGrid();
 checkEditToken();
 </script>

@@ -691,14 +691,32 @@ let raffleData  = {};
 let _modalMeetId = null, _modalRoleId = null;
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwgfWcgj8tvI1BlqvYoC15-bqsiqS9LpazMwn5dt0vkN297U7J94h1Ul-rjCPECTZef/exec'; // Replace with your deployed Apps Script URL (see SETUP.md Step 4)
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwunkEn11qHowtFUBXXdJdY5DtOQUlOwPFAfp8bnBV154TioShjEFMJgkwVJgoyX__W/exec'; // Replace with your deployed Apps Script URL (see SETUP.md Step 4)
+
+// ── JSONP HELPER ──────────────────────────────────────────────────────────────
+// Used for all GET requests to bypass CORS restrictions on Apps Script
+function jsonpGet(url, params) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'cb_' + Math.random().toString(36).slice(2);
+    const qs = Object.entries({...params, callback: cbName})
+      .map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    const script = document.createElement('script');
+    window[cbName] = (data) => {
+      delete window[cbName];
+      document.head.removeChild(script);
+      if (data && data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+    script.src = `${url}?${qs}`;
+    script.onerror = () => { delete window[cbName]; reject(new Error('JSONP failed')); };
+    document.head.appendChild(script);
+  });
+}
 
 // ── LOAD DATA ─────────────────────────────────────────────────────────────────
 async function loadData() {
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=getAdminData`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    const data = await jsonpGet(SCRIPT_URL, {action: 'getAdminData'});
     volunteers  = data.volunteers  || [];
     assignments = data.assignments || {};
     raffleData  = data.raffleData  || {};
@@ -715,9 +733,16 @@ async function loadData() {
 }
 
 // ── SAVE HELPERS ──────────────────────────────────────────────────────────────
+// POST requests use no-cors mode — we can't read the response, but the
+// Apps Script still receives and processes the data successfully.
 async function saveToSheet(payload) {
-  try { await fetch(SCRIPT_URL, {method:'POST', body: JSON.stringify(payload)}); }
-  catch(e) { console.error('Sheet save failed:', e); }
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify(payload),
+    });
+  } catch(e) { console.error('Sheet save failed:', e); }
 }
 
 // ══════════════════════════════════════════════════════
