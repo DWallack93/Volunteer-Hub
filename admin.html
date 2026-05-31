@@ -759,7 +759,10 @@ function showAdminTab(name, btn) {
 
 // ── DATA HELPERS ──────────────────────────────────────────────────────────────
 function isAvailable(vol, meetId, roleId) {
-  return vol.avail && vol.avail[meetId] && vol.avail[meetId].includes(roleId);
+  if (!vol.avail) return false;
+  // meetId may be string or number depending on source
+  const key = vol.avail[meetId] ? meetId : String(meetId);
+  return vol.avail[key] && vol.avail[key].includes(parseInt(roleId));
 }
 
 function getConflictRole(vol, meetId) {
@@ -940,7 +943,7 @@ function renderCoverage() {
         <td style="font-size:12px;color:var(--text-mid);text-align:center;">${role.slots}</td>
         <td style="font-size:13px;color:var(--text-muted);">${count} available</td>
         <td style="font-size:13px;${assignedCellStyle}padding:10px 14px;">${assignedDisplay}</td>
-        <td><button class="assign-btn" onclick="openModal(${meetId},${role.id})">View &amp; assign</button></td>
+        <td><button class="assign-btn" onclick="openModal('${meetId}',${role.id})">View &amp; assign</button></td>
       </tr>`;
     });
   });
@@ -952,9 +955,9 @@ function renderCoverage() {
 // MODAL
 // ══════════════════════════════════════════════════════
 function openModal(meetId, roleId) {
-  _modalMeetId = meetId; _modalRoleId = roleId;
-  const role = ROLES.find(r=>r.id===roleId);
-  const meet = MEETS.find(m=>m.id===meetId);
+  _modalMeetId = parseInt(meetId); _modalRoleId = parseInt(roleId);
+  const role = ROLES.find(r => r.id === parseInt(roleId));
+  const meet = MEETS.find(m => m.id === parseInt(meetId));
   document.getElementById('modal-title').textContent = role.name;
   document.getElementById('modal-subtitle').textContent = `${meet.label} · ${role.time}`;
   renderModalBody();
@@ -1092,7 +1095,7 @@ function renderRoster() {
       <td>${roleTags}</td>
       <td style="font-size:12px;">${vol.quals?'✓ On file':'<span style="color:var(--text-muted)">None noted</span>'}</td>
       <td><span class="su-badge">${vol.sus} SU${vol.sus!==1?'s':''}</span></td>
-      <td><button class="edit-btn" onclick="openEditModal(${vol.id})">Edit</button></td>
+      <td><button class="edit-btn" onclick="openEditModal('${vol.id}')">Edit</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -1105,7 +1108,7 @@ function renderRoster() {
 let _editVolId = null;
 
 function openEditModal(volId) {
-  const vol = volunteers.find(v => v.id === volId);
+  const vol = volunteers.find(v => String(v.id) === String(volId));
   if (!vol) return;
   _editVolId = volId;
 
