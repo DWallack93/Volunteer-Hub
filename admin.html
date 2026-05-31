@@ -748,6 +748,50 @@ async function saveToSheet(payload) {
 // ══════════════════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════════════════
+// ── TAB NAVIGATION ────────────────────────────────────────────────────────────
+function showAdminTab(name, btn) {
+  document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'season') renderSeasonView();
+}
+
+// ── DATA HELPERS ──────────────────────────────────────────────────────────────
+function isAvailable(vol, meetId, roleId) {
+  return vol.avail && vol.avail[meetId] && vol.avail[meetId].includes(roleId);
+}
+
+function getConflictRole(vol, meetId) {
+  if (!assignments[meetId]) return null;
+  for (const [rId, vIds] of Object.entries(assignments[meetId])) {
+    if (Array.isArray(vIds) && vIds.includes(vol.id)) return ROLES.find(r => r.id === parseInt(rId));
+  }
+  return null;
+}
+
+function recalcSUs() {
+  volunteers.forEach(v => {
+    const meetsDone = new Set();
+    MEETS.forEach(m => {
+      if (assignments[m.id]) {
+        const allAssigned = Object.values(assignments[m.id]).flat();
+        if (allAssigned.includes(v.id)) meetsDone.add(m.id);
+      }
+    });
+    v.sus = meetsDone.size;
+  });
+}
+
+function countUnfilledRoles(meetId) {
+  return ROLES.filter(role => {
+    const assigned = assignments[meetId] && assignments[meetId][role.id]
+      ? assignments[meetId][role.id].length
+      : 0;
+    return assigned < role.slots;
+  }).length;
+}
+
 function updateStats() {
   document.getElementById('stat-volunteers').textContent = volunteers.length;
   const meetId = parseInt(document.getElementById('meet-select')?.value || 1);
