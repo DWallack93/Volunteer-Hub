@@ -964,11 +964,13 @@ function renderCoverage() {
       const needed = role.slots;
 
       // Build assigned display — flag anyone no longer available
+      // Skip conflict check for pre-assigned volunteers (empty avail = bypassed form)
       const assignedDisplay = assignedVolIds.length
         ? assignedVolIds.map(vid => {
             const vol = volunteers.find(v => String(v.id) === String(vid));
             if (!vol) return `<span style="color:var(--text-muted)">Unknown</span>`;
-            const stillAvail = isAvailable(vol, meetId, role.id);
+            const hasAvailData = vol.avail && Object.keys(vol.avail).length > 0;
+            const stillAvail = !hasAvailData || isAvailable(vol, meetId, role.id);
             return stillAvail
               ? vol.name
               : `<span class="conflict-assigned" title="No longer available for this role/date">⚠ ${vol.name}</span>`;
@@ -978,7 +980,9 @@ function renderCoverage() {
       // Count only still-available assigned volunteers for color coding
       const validFilled = assignedVolIds.filter(vid => {
         const vol = volunteers.find(v => String(v.id) === String(vid));
-        return vol && isAvailable(vol, meetId, role.id);
+        if (!vol) return false;
+        const hasAvailData = vol.avail && Object.keys(vol.avail).length > 0;
+        return !hasAvailData || isAvailable(vol, meetId, role.id);
       }).length;
       const hasConflicts = filled > validFilled;
       const assignedCellStyle = hasConflicts
@@ -1023,19 +1027,52 @@ function openModal(meetId, roleId) {
 function renderModalBody() {
   const meetId = _modalMeetId, roleId = _modalRoleId;
   const role = ROLES.find(r => r.id === roleId);
+  const assignedVolIds = (assignments[meetId] && assignments[meetId][roleId]) || [];
+  const filledSlots = assignedVolIds.length;
+  const totalSlots = role.slots;
+
+  // Split assigned volunteers into still-available and no-longer-available
+  const assignedVols = assignedVolIds.map(vid => volunteers.find(v => String(v.id) === String(vid))).filter(Boolean);
+  const noLongerAvail = assignedVols.filter(v => {
+    const hasAvailData = v.avail && Object.keys(v.avail).length > 0;
+    return hasAvailData && !isAvailable(v, meetId, roleId);
+  });
+
+  // Available volunteers (not yet assigned)
   const availVols = volunteers.filter(v => isAvailable(v, meetId, roleId));
-  if (!availVols.length) {
+
+  if (!availVols.length && !assignedVols.length) {
     document.getElementById('modal-body').innerHTML =
       '<p style="color:var(--text-muted);font-size:13px;padding:12px 0;">No volunteers are available for this role on this date.</p>';
     return;
   }
-  const assignedVolIds = (assignments[meetId] && assignments[meetId][roleId]) || [];
-  const filledSlots = assignedVolIds.length;
-  const totalSlots = role.slots;
+
   const slotsNote = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);">${filledSlots} of ${totalSlots} slot${totalSlots!==1?'s':''} filled</div>`;
   let html = slotsNote;
+
+  // Section 1: assigned but no longer available — always show with warning + Remove
+  if (noLongerAvail.length) {
+    html += `<div style="font-size:11px;font-weight:700;color:#b83232;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">⚠ No longer available</div>`;
+    noLongerAvail.forEach(vol => {
+      html += `<div class="avail-name-row" style="opacity:0.8;">
+        <div>
+          <div class="name" style="color:#b83232;">${vol.name}</div>
+          <div class="sub">Removed this date from their availability</div>
+        </div>
+        <span style="display:inline-flex;align-items:center;gap:4px;">
+          <button class="modal-assign-btn" style="background:#b83232;cursor:default;" disabled>⚠ Assigned</button>
+          <span class="unassign-link" onclick="unassignVol('${meetId}','${roleId}','${vol.id}')">Remove</span>
+        </span>
+      </div>`;
+    });
+    if (availVols.length) {
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 8px;">Available volunteers</div>`;
+    }
+  }
+
+  // Section 2: available volunteers
   availVols.forEach(vol => {
-    const isAssigned = assignedVolIds.includes(vol.id);
+    const isAssigned = assignedVolIds.some(id => String(id) === String(vol.id));
     const conflict   = !isAssigned ? getConflictRole(vol, meetId) : null;
     const slotsFull  = !isAssigned && filledSlots >= totalSlots;
     let btnHtml;
@@ -1059,6 +1096,11 @@ function renderModalBody() {
       ${btnHtml}
     </div>`;
   });
+
+  if (!availVols.length && !noLongerAvail.length) {
+    html += '<p style="color:var(--text-muted);font-size:13px;padding:12px 0;">No volunteers available for this role on this date.</p>';
+  }
+
   document.getElementById('modal-body').innerHTML = html;
 }
 function assignVol(meetId, roleId, volId) {
