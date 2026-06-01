@@ -453,6 +453,43 @@ select:focus { border-color: var(--navy); }
   display: inline-block; margin-right: 5px; vertical-align: middle;
   border: 1px solid rgba(0,0,0,0.1);
 }
+.conflict-assigned {
+  color: #b83232; font-weight: 600; cursor: default;
+}
+.conflict-assigned::before { content: ''; }
+
+/* PASSWORD PROMPT */
+.password-overlay {
+  position: fixed; inset: 0;
+  background: var(--navy);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.password-box {
+  background: var(--white); border-radius: 12px;
+  padding: 40px; max-width: 380px; width: 90%; text-align: center;
+  box-shadow: 0 16px 60px rgba(0,0,0,0.4);
+}
+.password-box h2 {
+  font-family: 'DM Serif Display', serif; font-size: 22px;
+  font-weight: 400; margin-bottom: 6px;
+}
+.password-box p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+.password-box input[type="password"] {
+  width: 100%; border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; font-family: 'DM Sans', sans-serif; font-size: 15px;
+  color: var(--text); background: var(--cream); outline: none;
+  margin-bottom: 12px; text-align: center; letter-spacing: 0.1em;
+}
+.password-box input[type="password"]:focus { border-color: var(--navy); background: var(--white); }
+.password-box button {
+  width: 100%; background: var(--navy); color: var(--white);
+  border: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
+  font-size: 15px; font-weight: 600; padding: 12px;
+  border-radius: 8px; transition: background 0.15s;
+}
+.password-box button:hover { background: var(--navy-mid); }
+.password-error { color: #b83232; font-size: 12px; margin-top: 8px; display: none; }
 </style>
 </head>
 <body>
@@ -923,17 +960,35 @@ function renderCoverage() {
     ROLES.filter(r => r.cat === cat).forEach(role => {
       const count = volunteers.filter(v => isAvailable(v, meetId, role.id)).length;
       const assignedVolIds = (assignments[meetId] && assignments[meetId][role.id]) || [];
-      const assignedNames = assignedVolIds.map(vid => volunteers.find(v=>v.id===vid)?.name || '?');
-      const filled = assignedNames.length;
+      const filled = assignedVolIds.length;
       const needed = role.slots;
-      const assignedDisplay = assignedNames.length
-        ? assignedNames.join(', ')
+
+      // Build assigned display — flag anyone no longer available
+      const assignedDisplay = assignedVolIds.length
+        ? assignedVolIds.map(vid => {
+            const vol = volunteers.find(v => String(v.id) === String(vid));
+            if (!vol) return `<span style="color:var(--text-muted)">Unknown</span>`;
+            const stillAvail = isAvailable(vol, meetId, role.id);
+            return stillAvail
+              ? vol.name
+              : `<span class="conflict-assigned" title="No longer available for this role/date">⚠ ${vol.name}</span>`;
+          }).join(', ')
         : '<span style="color:var(--text-muted)">—</span>';
-      const assignedCellStyle = filled >= needed
-        ? 'background:#e8f5ed;'
-        : filled > 0
-          ? 'background:#fff8e1;'
-          : 'background:#fdecea;';
+
+      // Count only still-available assigned volunteers for color coding
+      const validFilled = assignedVolIds.filter(vid => {
+        const vol = volunteers.find(v => String(v.id) === String(vid));
+        return vol && isAvailable(vol, meetId, role.id);
+      }).length;
+      const hasConflicts = filled > validFilled;
+      const assignedCellStyle = hasConflicts
+        ? 'background:#fff0e8;'
+        : validFilled >= needed
+          ? 'background:#e8f5ed;'
+          : filled > 0
+            ? 'background:#fff8e1;'
+            : 'background:#fdecea;';
+
       const pStyle = priorityStyle[role.priority];
       const pLabel = priorityLabel[role.priority];
       html += `<tr>
@@ -1351,6 +1406,43 @@ function renderSeasonView() {
 // ══════════════════════════════════════════════════════
 buildMeetSelect();
 loadData();
+</script>
+<!-- PASSWORD PROMPT -->
+<div class="password-overlay" id="password-overlay">
+  <div class="password-box">
+    <div class="nav-brand" style="justify-content:center;margin-bottom:20px;">
+      <div class="dot"></div>CNW All-Comers
+    </div>
+    <h2>Coordinator Access</h2>
+    <p>Enter the coordinator password to access the dashboard.</p>
+    <input type="password" id="password-input" placeholder="Password"
+      onkeydown="if(event.key==='Enter') checkPassword()">
+    <button onclick="checkPassword()">Enter</button>
+    <div class="password-error" id="password-error">Incorrect password. Please try again.</div>
+  </div>
+</div>
+
+<script>
+// ── PASSWORD PROMPT ───────────────────────────────────────────────────────────
+// Change this to your desired coordinator password before deploying.
+const COORDINATOR_PASSWORD = 'YOUR_COORDINATOR_PASSWORD';
+
+function checkPassword() {
+  const input = document.getElementById('password-input').value;
+  if (input === COORDINATOR_PASSWORD) {
+    document.getElementById('password-overlay').style.display = 'none';
+    sessionStorage.setItem('cnw_admin_auth', '1');
+  } else {
+    document.getElementById('password-error').style.display = 'block';
+    document.getElementById('password-input').value = '';
+    document.getElementById('password-input').focus();
+  }
+}
+
+// Check if already authenticated in this session
+if (sessionStorage.getItem('cnw_admin_auth') === '1') {
+  document.getElementById('password-overlay').style.display = 'none';
+}
 </script>
 </body>
 </html>
