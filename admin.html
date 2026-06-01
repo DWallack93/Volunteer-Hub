@@ -1142,9 +1142,9 @@ function buildEditGrid(vol) {
       <span class="role-time" style="font-style:normal;">Auto-fills non-exp. roles</span>
     </td>`;
   MEETS.forEach(m => {
-    // A meet is "flexible" if all non-exp roles are checked for it
     const nonExpRoles = ROLES.filter(r => !r.exp);
-    const allChecked = nonExpRoles.every(r => vol.avail && vol.avail[m.id] && vol.avail[m.id].includes(r.id));
+    const meetAvail = vol.avail && (vol.avail[m.id] || vol.avail[String(m.id)]) || [];
+    const allChecked = nonExpRoles.every(r => meetAvail.includes(r.id));
     html += `<td class="check-cell"><input type="checkbox" id="eflex_${m.id}" ${allChecked?'checked':''} onchange="handleEditFlexChange(${m.id})"></td>`;
   });
   html += '</tr>';
@@ -1168,7 +1168,8 @@ function buildEditGrid(vol) {
         : '';
       html += `<tr><td class="role-cell">${role.name}${nudge}<br><span class="role-time">${role.time}</span>${role.exp?'<br><span class="qual-badge">Exp. req.</span>':''}</td>`;
       MEETS.forEach(m => {
-        const checked = vol.avail && vol.avail[m.id] && vol.avail[m.id].includes(role.id);
+        const meetAvail = vol.avail && (vol.avail[m.id] || vol.avail[String(m.id)]) || [];
+        const checked = meetAvail.includes(role.id);
         html += `<td class="check-cell"><input type="checkbox" id="ecb_${role.id}_${m.id}" ${checked?'checked':''}></td>`;
       });
       html += '</tr>';
@@ -1187,7 +1188,7 @@ function handleEditFlexChange(meetId) {
 }
 
 function saveVolunteerEdit() {
-  const vol = volunteers.find(v => v.id === _editVolId);
+  const vol = volunteers.find(v => String(v.id) === String(_editVolId));
   if (!vol) return;
 
   vol.name  = document.getElementById('edit-name').value.trim();
@@ -1231,7 +1232,7 @@ function hideDeleteConfirm() {
 function confirmDeleteVolunteer() {
   if (!_editVolId) return;
   saveToSheet({action:'deleteVolunteer', volId: _editVolId});
-  volunteers = volunteers.filter(v => v.id !== _editVolId);
+  volunteers = volunteers.filter(v => String(v.id) !== String(_editVolId));
   // Remove from assignments
   Object.keys(assignments).forEach(meetId => {
     Object.keys(assignments[meetId]).forEach(roleId => {
